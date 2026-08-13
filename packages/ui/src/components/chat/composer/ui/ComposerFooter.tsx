@@ -56,6 +56,7 @@ export interface ComposerFooterProps {
     onOpenIssuePicker: () => void;
     onOpenPrPicker: () => void;
     onOpenAttachSheet: () => void;
+    onOpenSideConversation?: () => void;
     onToggleExpandedInput: () => void;
     onTogglePermissionAutoAccept: () => void;
     onPrimaryAction: () => void;
@@ -95,6 +96,7 @@ export function ComposerFooter(props: ComposerFooterProps) {
         onOpenIssuePicker,
         onOpenPrPicker,
         onOpenAttachSheet,
+        onOpenSideConversation,
         onToggleExpandedInput,
         onTogglePermissionAutoAccept,
         onPrimaryAction,
@@ -224,6 +226,17 @@ export function ComposerFooter(props: ComposerFooterProps) {
                             withTooltip
                         />
                         <SessionGoalObjectiveCounter length={messageLength} />
+                        {currentSessionId && !newSessionDraftOpen && !isVSCode && onOpenSideConversation ? (
+                            <button
+                                type="button"
+                                className={footerIconButtonClass}
+                                onClick={onOpenSideConversation}
+                                title={t('chat.sideConversation.action.open')}
+                                aria-label={t('chat.sideConversation.action.open')}
+                            >
+                                <Icon name="chat-new" className={iconSizeClass} />
+                            </button>
+                        ) : null}
                     </div>
                     <div className={cn('flex items-center flex-1 justify-end', footerGapClass, 'md:gap-x-3')}>
                         <MemoModelControls className={cn('flex-1 min-w-0 justify-end')} />

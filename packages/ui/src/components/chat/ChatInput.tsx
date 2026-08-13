@@ -67,6 +67,7 @@ import { useChatSearchDirectory } from '@/hooks/useChatSearchDirectory';
 import { opencodeClient } from '@/lib/opencode/client';
 import { useGitStore, useIsGitRepo } from '@/stores/useGitStore';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
+import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
 import { useSkillsStore } from '@/stores/useSkillsStore';
 import { useCommandsStore } from '@/stores/useCommandsStore';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
@@ -142,6 +143,9 @@ import { LinkedReferenceRow } from './composer/ui/LinkedReferenceRow';
 import { RevertedMessageDock } from './composer/ui/RevertedMessageDock';
 import { SessionSuggestionChip } from '@/components/chat/SessionSuggestionChip';
 import { SessionGoalRow } from '@/components/chat/SessionGoalRow';
+import { isEphemeralSideConversation } from '@/lib/sideConversations';
+import { isEmbeddedSessionChat } from '@/components/layout/contextPanelEmbeddedChat';
+import { findEnabledSideConversationContribution, useUIPluginsStore } from '@/stores/useUIPluginsStore';
 
 // Lazy like in ChatMessage: a static import would pull the @pierre/diffs and
 // Shiki stacks into the eager startup graph for a dialog opened on demand.
@@ -546,15 +550,20 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
     // matching /tokens in the composer, the same way confirmed @files are.
     const availableCommands = useCommandsStore((s) => s.commands);
     const availableSkills = useSkillsStore((s) => s.skills);
+    const sideConversationEnabled = useUIPluginsStore((state) => Boolean(findEnabledSideConversationContribution(state)));
     const knownSlashNames = React.useMemo(() => {
         const names = new Set<string>([
             'init', 'review', 'undo', 'redo', 'timeline', 'compact', 'summary', 'workspace-review', 'plan-feature', 'craft-goal', 'schedule-task', 'catch-up', 'debug', 'weigh', 'explore',
         ]);
+        if (sideConversationEnabled) {
+            names.add('btw');
+            names.add('side');
+        }
         if (!isMobile && !isVSCodeRuntime()) names.add('handoff-review');
         for (const command of availableCommands) names.add(command.name.toLowerCase());
         for (const skill of availableSkills) names.add(skill.name.toLowerCase());
         return names;
-    }, [availableCommands, availableSkills, isMobile]);
+    }, [availableCommands, availableSkills, isMobile, sideConversationEnabled]);
 
     const availableSnippets = useSnippetsStore((s) => s.snippets);
     const knownSnippetTriggers = React.useMemo(() => {
@@ -951,12 +960,45 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
         setPrPickerOpen(true);
     }, []);
 
-    const getSubmitErrorMessage = (error: unknown, fallback: string) => {
+    const getSubmitErrorMessage = React.useCallback((error: unknown, fallback: string) => {
         const message = error instanceof Error ? error.message : '';
         return message.toLowerCase().includes('runtime changed')
             ? t('chat.chatInput.toast.messageSendFailed')
             : message || fallback;
-    };
+    }, [t]);
+
+    const openSideConversation = React.useCallback(async (prompt?: string) => {
+        if (!currentSessionId || !currentDirectory || isMobile || isVSCodeRuntime() || isEmbeddedSessionChat()) return;
+        const current = useGlobalSessionsStore.getState().activeSessions.find((session) => session.id === currentSessionId);
+        if (isEphemeralSideConversation(current)) {
+            toast.error(t('chat.sideConversation.toast.nestingUnsupported'));
+            return;
+        }
+        try {
+            await sessionActions.waitForConnectionOrThrow();
+            const sideSession = await sessionActions.createSideConversation(currentSessionId, currentDirectory);
+            useUIStore.getState().openContextPanelTab(currentDirectory, {
+                mode: 'chat',
+                dedupeKey: `session:${sideSession.id}`,
+                label: t('chat.sideConversation.title'),
+                readOnly: false,
+            });
+            if (prompt?.trim()) {
+                await opencodeClient.sendMessage({
+                    runtimeKey: getRuntimeKey(),
+                    id: sideSession.id,
+                    directory: currentDirectory,
+                    providerID: currentProviderId,
+                    modelID: currentModelId,
+                    agent: currentAgentName || undefined,
+                    variant: currentVariant || undefined,
+                    text: prompt.trim(),
+                });
+            }
+        } catch (error) {
+            toast.error(getSubmitErrorMessage(error, t('chat.sideConversation.toast.openFailed')));
+        }
+    }, [currentAgentName, currentDirectory, currentModelId, currentProviderId, currentSessionId, currentVariant, getSubmitErrorMessage, isMobile, t]);
 
     const handleSubmit = async (options?: SubmitOptions) => {
         const queuedOnly = options?.queuedOnly ?? false;
@@ -1149,6 +1191,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
                 } catch (error) {
                     toast.error(getSubmitErrorMessage(error, t('chat.chatInput.toast.compactFailed')));
                 }
+                return;
+            }
+            if (findEnabledSideConversationContribution(useUIPluginsStore.getState(), commandName) && currentSessionId && !isMobile && !isVSCodeRuntime()) {
+                await openSideConversation(argument);
                 return;
             }
 
@@ -2805,6 +2851,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
                         onOpenIssuePicker={openIssuePicker}
                         onOpenPrPicker={openPrPicker}
                         onOpenAttachSheet={openMobileAttachSheet}
+                        onOpenSideConversation={!sideConversationEnabled || isEmbeddedSessionChat() ? undefined : () => { void openSideConversation(); }}
                         onToggleExpandedInput={handleToggleExpandedInput}
                         onTogglePermissionAutoAccept={handlePermissionAutoAcceptToggle}
                         onPrimaryAction={handlePrimaryAction}

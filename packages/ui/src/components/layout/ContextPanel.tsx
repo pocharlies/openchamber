@@ -3,6 +3,7 @@ import React from 'react';
 import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
 import { DiffViewIcon } from '@/components/icons/DiffIcon';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { SortableTabsStrip } from '@/components/ui/sortable-tabs-strip';
 import { PullRequestView } from '@/components/views/PullRequestView';
 import { TerminalView } from '@/components/views/TerminalView';
@@ -52,6 +53,10 @@ import {
 } from './contextPanelEmbeddedChat';
 import { getContextSurfaceWidthFraction } from '@/lib/surfaces/registry';
 import { isTerminalEventTarget } from '@/lib/terminalFocus';
+import { getSideConversationCloseDisposition, isEphemeralSideConversation, preserveSideConversation } from '@/lib/sideConversations';
+import { opencodeClient } from '@/lib/opencode/client';
+import * as sessionActions from '@/sync/session-actions';
+import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
 import {
   type PreviewElementMetadata,
   isPreviewElementMetadata,
@@ -2441,12 +2446,75 @@ export const ContextPanel: React.FC = () => {
     }
   }, [isResizing]);
 
+  const [pendingSideChatClose, setPendingSideChatClose] = React.useState<{ tabID: string; sessionID: string } | null>(null);
+  const [sideChatClosePending, setSideChatClosePending] = React.useState(false);
+
+  const requestTabClose = React.useCallback(async (tabID: string) => {
+    if (!directoryKey) return;
+    const tab = tabs.find((candidate) => candidate.id === tabID);
+    const sessionID = tab?.mode === 'chat' ? getSessionIDFromDedupeKey(tab.dedupeKey) : null;
+    const session = sessionID
+      ? useGlobalSessionsStore.getState().activeSessions.find((candidate) => candidate.id === sessionID)
+      : null;
+    if (!sessionID || !isEphemeralSideConversation(session)) {
+      closeContextPanelTab(directoryKey, tabID);
+      return;
+    }
+    try {
+      const records = await opencodeClient.withDirectory(
+        directoryKey,
+        () => opencodeClient.getSessionMessages(sessionID, 1),
+      );
+      const disposition = getSideConversationCloseDisposition(session, records.length);
+      if (disposition === 'discard') {
+        const deleted = await sessionActions.deleteSession(sessionID);
+        if (deleted) closeContextPanelTab(directoryKey, tabID);
+        else toast.error(t('chat.sideConversation.toast.discardFailed'));
+        return;
+      }
+      if (disposition === 'close') {
+        closeContextPanelTab(directoryKey, tabID);
+        return;
+      }
+      setPendingSideChatClose({ tabID, sessionID });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('chat.sideConversation.toast.closeFailed'));
+    }
+  }, [closeContextPanelTab, directoryKey, t, tabs]);
+
+  const finishSideChatClose = React.useCallback(async (action: 'discard' | 'keep') => {
+    if (!pendingSideChatClose || !directoryKey) return;
+    setSideChatClosePending(true);
+    try {
+      if (action === 'discard') {
+        await opencodeClient.abortSession(pendingSideChatClose.sessionID).catch(() => false);
+        const deleted = await sessionActions.deleteSession(pendingSideChatClose.sessionID);
+        if (!deleted) throw new Error(t('chat.sideConversation.toast.discardFailed'));
+      } else {
+        await sessionActions.patchSessionMetadata(
+          pendingSideChatClose.sessionID,
+          directoryKey,
+          preserveSideConversation,
+          getRuntimeKey(),
+        );
+      }
+      closeContextPanelTab(directoryKey, pendingSideChatClose.tabID);
+      setPendingSideChatClose(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('chat.sideConversation.toast.closeFailed'));
+    } finally {
+      setSideChatClosePending(false);
+    }
+  }, [closeContextPanelTab, directoryKey, pendingSideChatClose, t]);
+
   const handleClose = React.useCallback(() => {
-    if (!directoryKey) {
+    if (!directoryKey) return;
+    if (activeTab?.mode === 'chat') {
+      void requestTabClose(activeTab.id);
       return;
     }
     closeContextPanel(directoryKey);
-  }, [closeContextPanel, directoryKey]);
+  }, [activeTab, closeContextPanel, directoryKey, requestTabClose]);
 
   const handleToggleExpanded = React.useCallback(() => {
     if (!directoryKey) {
@@ -2774,10 +2842,7 @@ export const ContextPanel: React.FC = () => {
             setActiveContextPanelTab(directoryKey, tabID);
           }}
           onClose={(tabID) => {
-            if (!directoryKey) {
-              return;
-            }
-            closeContextPanelTab(directoryKey, tabID);
+            void requestTabClose(tabID);
           }}
           onReorder={(activeTabID, overTabID) => {
             if (!directoryKey) {
@@ -3008,6 +3073,25 @@ export const ContextPanel: React.FC = () => {
         {activeTab?.mode !== 'chat' && !isFileTabActive && activeTab?.mode !== 'browser' && activeTab?.mode !== 'diff' && activeTab?.mode !== 'terminal' && activeTab?.mode !== 'walkthrough' ? activeNonChatContent : null}
       </div>
       </div>
+      <Dialog open={Boolean(pendingSideChatClose)} onOpenChange={(open) => { if (!open && !sideChatClosePending) setPendingSideChatClose(null); }}>
+        <DialogContent showCloseButton={false} className="max-w-sm gap-5">
+          <DialogHeader>
+            <DialogTitle>{t('chat.sideConversation.close.title')}</DialogTitle>
+            <DialogDescription>{t('chat.sideConversation.close.description')}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" disabled={sideChatClosePending} onClick={() => setPendingSideChatClose(null)}>
+              {t('chat.sideConversation.close.cancel')}
+            </Button>
+            <Button variant="outline" disabled={sideChatClosePending} onClick={() => { void finishSideChatClose('keep'); }}>
+              {t('chat.sideConversation.close.keep')}
+            </Button>
+            <Button variant="destructive" disabled={sideChatClosePending} onClick={() => { void finishSideChatClose('discard'); }}>
+              {t('chat.sideConversation.close.discard')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </aside>
   );
 };
