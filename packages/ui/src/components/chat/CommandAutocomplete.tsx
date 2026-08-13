@@ -11,6 +11,7 @@ import { useUIStore } from '@/stores/useUIStore';
 import { isVSCodeRuntime } from '@/lib/desktop';
 import { useMobileAutocompleteMaxHeight } from './useMobileAutocompleteMaxHeight';
 import { commandMatchesSearch, mergeCommandAutocompleteItems } from './commandAutocompleteItems';
+import { findEnabledSideConversationContribution, useUIPluginsStore } from '@/stores/useUIPluginsStore';
 
 type CommandSource = 'openchamber' | 'opencode' | 'skill';
 
@@ -72,6 +73,7 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
   const canStartSessionCommand = hasSession || hasNewSessionDraft;
   const isMobile = useUIStore((state) => state.isMobile);
   const canUseReviewHandoffFlow = hasSession && !isMobile && !isVSCodeRuntime();
+  const sideConversationEnabled = useUIPluginsStore((state) => Boolean(findEnabledSideConversationContribution(state)));
 
   const [commands, setCommands] = React.useState<CommandInfo[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -152,6 +154,13 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
             : []
           ),
           { id: 'openchamber:compact', name: 'compact', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.compactDescription'), isBuiltIn: true },
+          ...(hasSession && sideConversationEnabled && !isMobile && !isVSCodeRuntime()
+            ? [
+                { id: 'openchamber:btw', name: 'btw', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.sideDescription'), searchAliases: ['side'], isOpenChamber: true },
+                { id: 'openchamber:side', name: 'side', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.sideDescription'), searchAliases: ['btw'], isOpenChamber: true },
+              ]
+            : []
+          ),
           ...(hasSession
             ? [{ id: 'openchamber:summary', name: 'summary', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.summaryDescription'), isOpenChamber: true }]
             : []
@@ -226,6 +235,13 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
             : []
           ),
           { id: 'openchamber:compact', name: 'compact', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.compactDescription'), isBuiltIn: true },
+          ...(hasSession && !isMobile && !isVSCodeRuntime()
+            ? [
+                { id: 'openchamber:btw', name: 'btw', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.sideDescription'), searchAliases: ['side'], isOpenChamber: true },
+                { id: 'openchamber:side', name: 'side', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.sideDescription'), searchAliases: ['btw'], isOpenChamber: true },
+              ]
+            : []
+          ),
           ...(hasSession
             ? [{ id: 'openchamber:summary', name: 'summary', source: 'openchamber' as const, description: t('chat.commandAutocomplete.command.summaryDescription'), isOpenChamber: true }]
             : []
@@ -282,7 +298,7 @@ export const CommandAutocomplete = React.forwardRef<CommandAutocompleteHandle, C
     };
 
     loadCommands();
-  }, [searchQuery, hasMessagesInCurrentSession, hasSession, canStartSessionCommand, canUseReviewHandoffFlow, commandsWithMetadata, skills, t]);
+  }, [searchQuery, hasMessagesInCurrentSession, hasSession, canStartSessionCommand, canUseReviewHandoffFlow, commandsWithMetadata, isMobile, sideConversationEnabled, skills, t]);
 
   React.useEffect(() => {
     setSelectedIndex(0);

@@ -13,6 +13,7 @@ import { formatDirectoryName, formatPathForDisplay } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 import { resolveGlobalSessionDirectory } from '@/stores/useGlobalSessionsStore';
 import { getWorktreeFirstSeenAt } from '../worktreeFirstSeen';
+import { isEphemeralSideConversation } from '@/lib/sideConversations';
 
 type Args = {
   homeDirectory: string | null;
@@ -70,6 +71,7 @@ export const useSessionGrouping = (args: Args) => {
     ) => {
       const normalizedProjectRoot = normalizePath(projectRoot ?? null);
       const sortedProjectSessions = dedupeSessionsById(projectSessions)
+        .filter((session) => !isEphemeralSideConversation(session))
         .sort((a, b) => compareSessionsByLifecycleOrder(a, b, args.pinnedSessionIds, args.sessionOrderRanks));
 
       const sessionMap = new Map(sortedProjectSessions.map((session) => [session.id, session]));

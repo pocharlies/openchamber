@@ -35,6 +35,8 @@ import { getStaleRunningToolMessageID } from "./materialization"
 import { normalizePath } from "@/lib/pathNormalization"
 import { mergeMessages } from "./optimistic"
 import { messagesBefore, messagesFrom } from "./message-ordering"
+import { findLastCompletedAssistantMessageID, getSideConversationMetadata, withSideConversationMetadata } from "@/lib/sideConversations"
+import { getSyncMessages } from "./sync-refs"
 
 const MESSAGE_REFETCH_LIMIT = 100
 const SEND_CONFIRMATION_REFETCH_LIMIT = 30
@@ -754,6 +756,36 @@ export async function createSession(
     console.error("[session-actions] createSession failed", error)
     return null
   }
+}
+
+export async function createSideConversation(
+  parentSessionID: string,
+  directory: string,
+): Promise<Session> {
+  const parent = await opencodeClient.getSession(parentSessionID, directory)
+  if (getSideConversationMetadata(parent)) {
+    throw new Error("Nested side conversations are not supported")
+  }
+
+  const boundaryMessageID = findLastCompletedAssistantMessageID(getSyncMessages(parentSessionID, directory))
+  const forked = boundaryMessageID
+    ? await opencodeClient.forkSession(parentSessionID, boundaryMessageID, directory)
+    : await opencodeClient.createSession({ parentID: parentSessionID, title: "Side chat" }, directory)
+  let updated: Session
+  try {
+    updated = await opencodeClient.updateSession(forked.id, {
+      metadata: withSideConversationMetadata(getSessionMetadata(forked), parentSessionID),
+    }, directory)
+  } catch (error) {
+    await opencodeClient.deleteSession(forked.id, directory).catch(() => false)
+    throw error
+  }
+
+  registerSessionDirectory(updated.id, directory)
+  useGlobalSessionsStore.getState().upsertSession(updated)
+  mirrorSessionIntoLiveStores(updated, directory)
+  useSessionUIStore.getState().markSessionAsOpenChamberCreated(updated.id)
+  return updated
 }
 
 /**

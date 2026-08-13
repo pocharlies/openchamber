@@ -43,6 +43,7 @@ mock.module("../session-ui-store", () => ({
 
 mock.module("../sync-refs", () => ({
   getSyncSessionDirectory: () => null,
+  getSyncMessages: () => [],
   registerSessionDirectory: (sessionID: string, directory: string) => {
     registerSessionDirectoryCalls.push({ sessionID, directory })
   },
