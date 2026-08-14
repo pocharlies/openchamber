@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { Message, Session } from '@opencode-ai/sdk/v2';
 import {
+  SIDE_CONVERSATION_BOUNDARY_INSTRUCTION,
   findLastCompletedAssistantMessageID,
   getSideConversationCloseDisposition,
   getSideConversationMetadata,
@@ -44,5 +45,17 @@ describe('side conversation contract', () => {
     } as unknown as Session;
     expect(getSideConversationCloseDisposition(kept, 0)).toBe('close');
     expect(getSideConversationCloseDisposition({ id: 'ses_regular' } as Session, 3)).toBe('close');
+  });
+
+  test('boundary demotes inherited history without referring to its own position', () => {
+    expect(SIDE_CONVERSATION_BOUNDARY_INSTRUCTION).toContain('reference context only');
+    expect(SIDE_CONVERSATION_BOUNDARY_INSTRUCTION).toContain('inherited history');
+    expect(SIDE_CONVERSATION_BOUNDARY_INSTRUCTION).toContain('Sub-agents are off-limits');
+
+    // The instruction is re-sent on every turn, so any phrasing anchored to
+    // where it sits would also disown the side conversation's own earlier
+    // turns. Keep it scoped to the history inherited from the parent thread.
+    expect(SIDE_CONVERSATION_BOUNDARY_INSTRUCTION).not.toContain('before this boundary');
+    expect(SIDE_CONVERSATION_BOUNDARY_INSTRUCTION).not.toContain('after this boundary');
   });
 });

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **Side chat:** a side chat no longer carries on with the task from the conversation it was opened from. The history it inherits is treated as background information, so it answers what you ask there instead of resuming the previous plan, and it leaves the workspace alone unless you ask it to change something.
+- Chat: a "Side chat" label now appears above the composer while you are inside one.
+
 ## [1.19.0] - 2026-08-19
 
 - **Settings/Integrations:** a new Integrations settings page lists Claude Code, Command Code, and Cursor plugins with install, update, setup, and remove actions, plus Discord and Telegram Coming soon placeholders.
