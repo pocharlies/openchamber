@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 - **Side chat:** a side chat no longer carries on with the task from the conversation it was opened from. The history it inherits is treated as background information, so it answers what you ask there instead of resuming the previous plan, and it leaves the workspace alone unless you ask it to change something.
+- **Side chat:** it now opens on a clean screen instead of replaying the conversation it was forked from. The agent still receives that history as context. Closing a side chat you never wrote in also stops asking what to do with it.
 - Chat: a "Side chat" label now appears above the composer while you are inside one.
 
 ## [1.19.0] - 2026-08-19
