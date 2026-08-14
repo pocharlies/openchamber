@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { Message, Session } from '@opencode-ai/sdk/v2';
 import {
   SIDE_CONVERSATION_BOUNDARY_INSTRUCTION,
+  dropInheritedMessages,
   findLastCompletedAssistantMessageID,
   getSideConversationCloseDisposition,
   getSideConversationMetadata,
@@ -45,6 +46,37 @@ describe('side conversation contract', () => {
     } as unknown as Session;
     expect(getSideConversationCloseDisposition(kept, 0)).toBe('close');
     expect(getSideConversationCloseDisposition({ id: 'ses_regular' } as Session, 3)).toBe('close');
+  });
+
+  test('hides the inherited transcript up to the recorded boundary', () => {
+    const messages = [
+      { info: { id: 'msg-1' } },
+      { info: { id: 'msg-boundary' } },
+      { info: { id: 'msg-own' } },
+    ];
+    expect(dropInheritedMessages(messages, 'msg-boundary')).toEqual([{ info: { id: 'msg-own' } }]);
+    expect(dropInheritedMessages(messages, 'msg-own')).toEqual([]);
+  });
+
+  test('keeps the transcript when the boundary is missing or unknown', () => {
+    const messages = [{ info: { id: 'msg-1' } }, { info: { id: 'msg-2' } }];
+    // No boundary recorded: sessions created before the field existed.
+    expect(dropInheritedMessages(messages, undefined)).toBe(messages);
+    expect(dropInheritedMessages(messages, null)).toBe(messages);
+    // Boundary outside the loaded page must not blank the whole view.
+    expect(dropInheritedMessages(messages, 'msg-not-loaded')).toBe(messages);
+    expect(dropInheritedMessages([], 'msg-boundary')).toEqual([]);
+  });
+
+  test('records the inherited boundary in metadata without disturbing the rest', () => {
+    const marked = withSideConversationMetadata({}, 'ses_parent', 'msg-boundary');
+    const session = { id: 'ses_side', metadata: marked } as unknown as Session;
+    expect(getSideConversationMetadata(session)?.inheritedThroughMessageID).toBe('msg-boundary');
+    expect(isEphemeralSideConversation(session)).toBe(true);
+    // A fork with no inherited tail must not invent one.
+    const empty = withSideConversationMetadata({}, 'ses_parent');
+    const emptySession = { id: 'ses_side', metadata: empty } as unknown as Session;
+    expect(getSideConversationMetadata(emptySession)?.inheritedThroughMessageID).toBe(undefined);
   });
 
   test('boundary demotes inherited history without referring to its own position', () => {

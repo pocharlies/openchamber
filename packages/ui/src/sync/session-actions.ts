@@ -770,10 +770,21 @@ export async function createSideConversation(
   const forked = boundaryMessageID
     ? await opencodeClient.forkSession(parentSessionID, boundaryMessageID, directory)
     : await opencodeClient.createSession({ parentID: parentSessionID, title: "Side chat" }, directory)
+
+  // Read the child's own tail rather than reusing the parent's boundary id: the
+  // fork is free to re-mint ids, and nothing can have been sent here yet, so
+  // whatever sits last right now is exactly what was inherited. `limit` is a
+  // tail, so 1 is the newest message.
+  const inheritedTail = await opencodeClient.withDirectory(
+    directory,
+    () => opencodeClient.getSessionMessages(forked.id, 1),
+  ).catch(() => [])
+  const inheritedThroughMessageID = inheritedTail[inheritedTail.length - 1]?.info?.id
+
   let updated: Session
   try {
     updated = await opencodeClient.updateSession(forked.id, {
-      metadata: withSideConversationMetadata(getSessionMetadata(forked), parentSessionID),
+      metadata: withSideConversationMetadata(getSessionMetadata(forked), parentSessionID, inheritedThroughMessageID),
     }, directory)
   } catch (error) {
     await opencodeClient.deleteSession(forked.id, directory).catch(() => false)

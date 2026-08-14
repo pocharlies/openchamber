@@ -53,7 +53,7 @@ import {
 } from './contextPanelEmbeddedChat';
 import { getContextSurfaceWidthFraction } from '@/lib/surfaces/registry';
 import { isTerminalEventTarget } from '@/lib/terminalFocus';
-import { getSideConversationCloseDisposition, isEphemeralSideConversation, preserveSideConversation } from '@/lib/sideConversations';
+import { getSideConversationCloseDisposition, getSideConversationMetadata, isEphemeralSideConversation, preserveSideConversation } from '@/lib/sideConversations';
 import { opencodeClient } from '@/lib/opencode/client';
 import * as sessionActions from '@/sync/session-actions';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
@@ -2465,7 +2465,13 @@ export const ContextPanel: React.FC = () => {
         directoryKey,
         () => opencodeClient.getSessionMessages(sessionID, 1),
       );
-      const disposition = getSideConversationCloseDisposition(session, records.length);
+      // The fork arrives with the parent's transcript, so "has messages" alone
+      // would never be false. Only a tail past the inherited boundary counts as
+      // something the reader would lose.
+      const inheritedThroughMessageID = getSideConversationMetadata(session)?.inheritedThroughMessageID;
+      const newestMessageID = records[records.length - 1]?.info?.id;
+      const ownMessageCount = newestMessageID && newestMessageID !== inheritedThroughMessageID ? 1 : 0;
+      const disposition = getSideConversationCloseDisposition(session, ownMessageCount);
       if (disposition === 'discard') {
         const deleted = await sessionActions.deleteSession(sessionID);
         if (deleted) closeContextPanelTab(directoryKey, tabID);

@@ -34,6 +34,12 @@ export type SideConversationMetadata = {
   parentSessionID: string;
   ephemeral: boolean;
   createdAt: string;
+  /**
+   * Last message the fork inherited from the parent. Optional: side
+   * conversations created before this field existed simply keep showing the
+   * inherited transcript.
+   */
+  inheritedThroughMessageID?: string;
 };
 
 export const getSideConversationMetadata = (
@@ -65,6 +71,7 @@ export const getSideConversationCloseDisposition = (
 export const withSideConversationMetadata = (
   metadata: RecordValue,
   parentSessionID: string,
+  inheritedThroughMessageID?: string,
 ): RecordValue => {
   const openchamber = isRecord(metadata.openchamber) ? metadata.openchamber : {};
   return {
@@ -77,9 +84,29 @@ export const withSideConversationMetadata = (
         parentSessionID,
         ephemeral: true,
         createdAt: new Date().toISOString(),
+        ...(inheritedThroughMessageID ? { inheritedThroughMessageID } : {}),
       } satisfies SideConversationMetadata,
     },
   };
+};
+
+/**
+ * Hides the transcript the fork inherited, so a side conversation opens clean
+ * while the model still receives that history as context.
+ *
+ * An unknown boundary returns the list untouched: the inherited tail may simply
+ * not be in the loaded page, and hiding everything would erase the side
+ * conversation's own turns. The same array is returned when there is nothing to
+ * drop, so memoized consumers keep their referential equality.
+ */
+export const dropInheritedMessages = <T extends { info?: { id?: string } }>(
+  messages: readonly T[],
+  inheritedThroughMessageID: string | null | undefined,
+): readonly T[] => {
+  if (!inheritedThroughMessageID || messages.length === 0) return messages;
+  const boundaryIndex = messages.findIndex((message) => message?.info?.id === inheritedThroughMessageID);
+  if (boundaryIndex < 0) return messages;
+  return messages.slice(boundaryIndex + 1);
 };
 
 export const preserveSideConversation = (metadata: RecordValue): RecordValue => {

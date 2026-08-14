@@ -55,6 +55,8 @@ import { WorkStatusPanel } from './work-status/WorkStatusPanel';
 import { useWorkStatusVisibility } from './work-status/useWorkStatusVisibility';
 import { getEmbeddedSessionChatOriginSessionId } from '@/components/layout/contextPanelEmbeddedChat';
 import { isFullySyntheticMessage } from '@/lib/messages/synthetic';
+import { dropInheritedMessages, getSideConversationMetadata } from '@/lib/sideConversations';
+import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
 import { normalizeUserDisplayParts } from './message/normalizeUserDisplayParts';
 import { findShellCommandForMessage, isUserShellMarkerMessage } from './lib/shellBridge';
 import { resolveChatPromptReadOnly } from './chatPromptReadOnly';
@@ -595,7 +597,16 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({ active = true, aut
         suspendPartUpdates: Boolean(streamingMessageId),
         suspendPartUpdatesForMessageId: streamingMessageId,
     });
-    const sessionMessages = currentSessionId ? sessionMessageRecords : EMPTY_MESSAGES;
+    // A side conversation opens clean: the forked transcript stays in the
+    // model's context but is not replayed to the reader. Selecting the id keeps
+    // this subscription off unrelated session updates.
+    const inheritedThroughMessageID = useGlobalSessionsStore((state) => (
+        getSideConversationMetadata(state.activeSessions.find((session) => session.id === currentSessionId))
+            ?.inheritedThroughMessageID ?? null
+    ));
+    const sessionMessages = currentSessionId
+        ? dropInheritedMessages(sessionMessageRecords, inheritedThroughMessageID) as typeof sessionMessageRecords
+        : EMPTY_MESSAGES;
     const sessionMessageLoadState = useSessionMessageLoadState(
         currentSessionId ?? '',
         effectiveSessionDirectory,
