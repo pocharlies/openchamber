@@ -143,7 +143,7 @@ import { LinkedReferenceRow } from './composer/ui/LinkedReferenceRow';
 import { RevertedMessageDock } from './composer/ui/RevertedMessageDock';
 import { SessionSuggestionChip } from '@/components/chat/SessionSuggestionChip';
 import { SessionGoalRow } from '@/components/chat/SessionGoalRow';
-import { isEphemeralSideConversation } from '@/lib/sideConversations';
+import { SIDE_CONVERSATION_BOUNDARY_INSTRUCTION, isEphemeralSideConversation } from '@/lib/sideConversations';
 import { isEmbeddedSessionChat } from '@/components/layout/contextPanelEmbeddedChat';
 import { findEnabledSideConversationContribution, useUIPluginsStore } from '@/stores/useUIPluginsStore';
 
@@ -551,6 +551,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
     const availableCommands = useCommandsStore((s) => s.commands);
     const availableSkills = useSkillsStore((s) => s.skills);
     const sideConversationEnabled = useUIPluginsStore((state) => Boolean(findEnabledSideConversationContribution(state)));
+    // Selecting the boolean rather than the session keeps this subscription from
+    // re-rendering the composer on every unrelated session update.
+    const isInsideSideConversation = useGlobalSessionsStore((state) =>
+        isEphemeralSideConversation(state.activeSessions.find((session) => session.id === currentSessionId)),
+    );
     const knownSlashNames = React.useMemo(() => {
         const names = new Set<string>([
             'init', 'review', 'undo', 'redo', 'timeline', 'compact', 'summary', 'workspace-review', 'plan-feature', 'craft-goal', 'schedule-task', 'catch-up', 'debug', 'weigh', 'explore',
@@ -1104,12 +1109,21 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
             useSkillsStore.getState().skills.map((skill) => skill.name),
         );
 
+        // A side conversation inherits the parent transcript through the fork, so
+        // the boundary rides with every send: it keeps that history readable as
+        // reference material instead of a plan the model should carry on with.
+        const sideConversationTexts = isEphemeralSideConversation(
+            useGlobalSessionsStore.getState().activeSessions.find((session) => session.id === currentSessionId),
+        )
+            ? [SIDE_CONVERSATION_BOUNDARY_INSTRUCTION]
+            : [];
+
         const outgoing = buildOutgoingMessage({
             queued: queuedMessagesToSend,
             composerText: !queuedOnly && inputSnapshot.hasContent ? inputSnapshot.message : null,
             composerAttachments: attachedFiles,
             inlineComments: drafts,
-            syntheticTexts: syntheticParts?.map((part) => part.text) ?? [],
+            syntheticTexts: [...sideConversationTexts, ...(syntheticParts?.map((part) => part.text) ?? [])],
             linkedIssueContext: linkedIssue?.contextText ?? null,
             linkedPr: linkedPr
                 ? { instructions: linkedPr.instructionsText, context: linkedPr.contextText }
@@ -2678,6 +2692,15 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
                     />
                 ) : (
                 <>
+                {isInsideSideConversation ? (
+                    <div
+                        role="status"
+                        className="mb-1.5 flex items-center gap-1.5 self-start rounded-md border border-border/80 bg-muted px-2 py-1 text-xs font-medium text-muted-foreground"
+                    >
+                        <Icon name="chat-thread" className="size-3.5 shrink-0" />
+                        <span>{t('chat.sideConversation.title')}</span>
+                    </div>
+                ) : null}
                 <SessionGoalRow
                     sessionId={currentSessionId}
                     directory={currentSessionDirectoryForSync ?? currentDirectory}

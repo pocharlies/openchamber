@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- **Side chat:** a side chat no longer carries on with the task from the conversation it was opened from. The history it inherits is treated as background information, so it answers what you ask there instead of resuming the previous plan, and it leaves the workspace alone unless you ask it to change something.
+- Chat: a "Side chat" label now appears above the composer while you are inside one.
 - Remote access: pairing QR codes created while the app is open through a public domain (for example behind a reverse proxy) now include that domain as a connection address, so paired phones can reach the server over it instead of relying only on the local network address or the relay.
 - Mobile: a brief network hiccup when opening or returning to the app no longer bounces a working connection to the connect screen — the app retries in the background and reconnects on its own, while an unreachable server shows the connect screen within a few seconds instead of holding the launch logo.
 - Mobile: long-pressing the logo on the connect screen (or the instances list) opens a connection log with a copy button, for reporting connection problems.
