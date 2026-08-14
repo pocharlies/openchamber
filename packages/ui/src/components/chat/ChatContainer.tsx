@@ -55,6 +55,7 @@ import { WorkStatusPanel } from './work-status/WorkStatusPanel';
 import { useWorkStatusVisibility } from './work-status/useWorkStatusVisibility';
 import { getEmbeddedSessionChatOriginSessionId } from '@/components/layout/contextPanelEmbeddedChat';
 import { isFullySyntheticMessage } from '@/lib/messages/synthetic';
+import { isEmbeddedSessionChat } from '@/components/layout/contextPanelEmbeddedChat';
 import { dropInheritedMessages, getSideConversationMetadata } from '@/lib/sideConversations';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
 import { normalizeUserDisplayParts } from './message/normalizeUserDisplayParts';
@@ -623,7 +624,16 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         getSideConversationMetadata(state.activeSessions.find((session) => session.id === currentSessionId))
             ?.createdAt ?? null
     ));
-    const sessionMessages = currentSessionId
+    // Messages reach the panel before the session record does, and until that
+    // record arrives there is no way to tell a side conversation from an
+    // ordinary one. Rendering meanwhile would flash the inherited transcript and
+    // then erase it, so the panel waits instead. Only the panel: the main chat
+    // never shows a forked transcript and must not gain an empty first frame.
+    const sessionRecordResolved = useGlobalSessionsStore((state) => (
+        state.activeSessions.some((session) => session.id === currentSessionId)
+    ));
+    const undecidedSideConversation = isEmbeddedSessionChat() && !sessionRecordResolved;
+    const sessionMessages = currentSessionId && !undecidedSideConversation
         ? dropInheritedMessages(sessionMessageRecords, sideConversationForkedAt) as typeof sessionMessageRecords
         : EMPTY_MESSAGES;
     const sessionMessageLoadState = useSessionMessageLoadState(
