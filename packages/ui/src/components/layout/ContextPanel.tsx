@@ -53,7 +53,7 @@ import {
 } from './contextPanelEmbeddedChat';
 import { getContextSurfaceWidthFraction } from '@/lib/surfaces/registry';
 import { isTerminalEventTarget } from '@/lib/terminalFocus';
-import { getSideConversationCloseDisposition, getSideConversationMetadata, isEphemeralSideConversation, preserveSideConversation } from '@/lib/sideConversations';
+import { dropInheritedMessages, getSideConversationCloseDisposition, getSideConversationMetadata, isEphemeralSideConversation, preserveSideConversation } from '@/lib/sideConversations';
 import { opencodeClient } from '@/lib/opencode/client';
 import * as sessionActions from '@/sync/session-actions';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
@@ -2466,11 +2466,12 @@ export const ContextPanel: React.FC = () => {
         () => opencodeClient.getSessionMessages(sessionID, 1),
       );
       // The fork arrives with the parent's transcript, so "has messages" alone
-      // would never be false. Only a tail past the inherited boundary counts as
-      // something the reader would lose.
-      const inheritedThroughMessageID = getSideConversationMetadata(session)?.inheritedThroughMessageID;
-      const newestMessageID = records[records.length - 1]?.info?.id;
-      const ownMessageCount = newestMessageID && newestMessageID !== inheritedThroughMessageID ? 1 : 0;
+      // would never be false. Only a message newer than the fork is something
+      // the reader would lose. `limit` is a tail, so this is the newest one.
+      const ownMessageCount = dropInheritedMessages(
+        records,
+        getSideConversationMetadata(session)?.createdAt,
+      ).length;
       const disposition = getSideConversationCloseDisposition(session, ownMessageCount);
       if (disposition === 'discard') {
         const deleted = await sessionActions.deleteSession(sessionID);

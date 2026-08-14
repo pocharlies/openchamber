@@ -34,13 +34,9 @@ export type SideConversationMetadata = {
   parentSessionID: string;
   ephemeral: boolean;
   createdAt: string;
-  /**
-   * Last message the fork inherited from the parent. Optional: side
-   * conversations created before this field existed simply keep showing the
-   * inherited transcript.
-   */
-  inheritedThroughMessageID?: string;
 };
+
+const NO_MESSAGES: readonly never[] = Object.freeze([]);
 
 export const getSideConversationMetadata = (
   session: Session | null | undefined,
@@ -71,7 +67,6 @@ export const getSideConversationCloseDisposition = (
 export const withSideConversationMetadata = (
   metadata: RecordValue,
   parentSessionID: string,
-  inheritedThroughMessageID?: string,
 ): RecordValue => {
   const openchamber = isRecord(metadata.openchamber) ? metadata.openchamber : {};
   return {
@@ -84,7 +79,6 @@ export const withSideConversationMetadata = (
         parentSessionID,
         ephemeral: true,
         createdAt: new Date().toISOString(),
-        ...(inheritedThroughMessageID ? { inheritedThroughMessageID } : {}),
       } satisfies SideConversationMetadata,
     },
   };
@@ -94,19 +88,30 @@ export const withSideConversationMetadata = (
  * Hides the transcript the fork inherited, so a side conversation opens clean
  * while the model still receives that history as context.
  *
- * An unknown boundary returns the list untouched: the inherited tail may simply
- * not be in the loaded page, and hiding everything would erase the side
- * conversation's own turns. The same array is returned when there is nothing to
- * drop, so memoized consumers keep their referential equality.
+ * The fork copies messages with their original timestamps, so the moment the
+ * side conversation was created separates inherited history from its own turns.
+ * That moment is already part of the contract, which means this also works for
+ * side conversations created before this behaviour existed — nothing has to be
+ * recorded at fork time, and there is no capture step that can fail silently.
+ *
+ * Messages are dropped as a leading run rather than filtered individually, so a
+ * clock reading cannot reorder the transcript. The same array is returned when
+ * there is nothing to drop, so memoized consumers keep referential equality.
  */
-export const dropInheritedMessages = <T extends { info?: { id?: string } }>(
+export const dropInheritedMessages = <T extends { info?: { time?: { created?: number } } }>(
   messages: readonly T[],
-  inheritedThroughMessageID: string | null | undefined,
+  forkedAt: string | null | undefined,
 ): readonly T[] => {
-  if (!inheritedThroughMessageID || messages.length === 0) return messages;
-  const boundaryIndex = messages.findIndex((message) => message?.info?.id === inheritedThroughMessageID);
-  if (boundaryIndex < 0) return messages;
-  return messages.slice(boundaryIndex + 1);
+  if (!forkedAt || messages.length === 0) return messages;
+  const forkedAtMs = Date.parse(forkedAt);
+  if (!Number.isFinite(forkedAtMs)) return messages;
+  const firstOwnIndex = messages.findIndex((message) => {
+    const created = message?.info?.time?.created;
+    return typeof created === 'number' && created >= forkedAtMs;
+  });
+  if (firstOwnIndex < 0) return NO_MESSAGES as readonly T[];
+  if (firstOwnIndex === 0) return messages;
+  return messages.slice(firstOwnIndex);
 };
 
 export const preserveSideConversation = (metadata: RecordValue): RecordValue => {

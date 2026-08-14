@@ -48,35 +48,32 @@ describe('side conversation contract', () => {
     expect(getSideConversationCloseDisposition({ id: 'ses_regular' } as Session, 3)).toBe('close');
   });
 
-  test('hides the inherited transcript up to the recorded boundary', () => {
+  test('hides history inherited from the parent and keeps its own turns', () => {
+    const forkedAt = '2026-08-14T20:46:33.547Z';
     const messages = [
-      { info: { id: 'msg-1' } },
-      { info: { id: 'msg-boundary' } },
-      { info: { id: 'msg-own' } },
+      { info: { time: { created: 1786740288172 } } },
+      { info: { time: { created: 1786740393546 } } },
+      { info: { time: { created: 1786740500000 } } },
     ];
-    expect(dropInheritedMessages(messages, 'msg-boundary')).toEqual([{ info: { id: 'msg-own' } }]);
-    expect(dropInheritedMessages(messages, 'msg-own')).toEqual([]);
+    expect(dropInheritedMessages(messages, forkedAt)).toEqual([{ info: { time: { created: 1786740500000 } } }]);
   });
 
-  test('keeps the transcript when the boundary is missing or unknown', () => {
-    const messages = [{ info: { id: 'msg-1' } }, { info: { id: 'msg-2' } }];
-    // No boundary recorded: sessions created before the field existed.
-    expect(dropInheritedMessages(messages, undefined)).toBe(messages);
+  test('opens clean when every message predates the fork', () => {
+    // The measured shape of a freshly opened side chat: all inherited, none own.
+    const messages = [{ info: { time: { created: 1786740288172 } } }];
+    expect(dropInheritedMessages(messages, '2026-08-14T20:46:33.547Z')).toEqual([]);
+  });
+
+  test('keeps the transcript when there is nothing to separate it by', () => {
+    const messages = [{ info: { time: { created: 10 } } }, { info: { time: { created: 20 } } }];
+    // Not a side conversation at all.
     expect(dropInheritedMessages(messages, null)).toBe(messages);
-    // Boundary outside the loaded page must not blank the whole view.
-    expect(dropInheritedMessages(messages, 'msg-not-loaded')).toBe(messages);
-    expect(dropInheritedMessages([], 'msg-boundary')).toEqual([]);
-  });
-
-  test('records the inherited boundary in metadata without disturbing the rest', () => {
-    const marked = withSideConversationMetadata({}, 'ses_parent', 'msg-boundary');
-    const session = { id: 'ses_side', metadata: marked } as unknown as Session;
-    expect(getSideConversationMetadata(session)?.inheritedThroughMessageID).toBe('msg-boundary');
-    expect(isEphemeralSideConversation(session)).toBe(true);
-    // A fork with no inherited tail must not invent one.
-    const empty = withSideConversationMetadata({}, 'ses_parent');
-    const emptySession = { id: 'ses_side', metadata: empty } as unknown as Session;
-    expect(getSideConversationMetadata(emptySession)?.inheritedThroughMessageID).toBe(undefined);
+    expect(dropInheritedMessages(messages, undefined)).toBe(messages);
+    // An unparseable timestamp must not blank the view.
+    expect(dropInheritedMessages(messages, 'not-a-date')).toBe(messages);
+    // Nothing inherited: same array back, so memoized consumers do not re-render.
+    expect(dropInheritedMessages(messages, new Date(5).toISOString())).toBe(messages);
+    expect(dropInheritedMessages([], '2026-08-14T20:46:33.547Z')).toEqual([]);
   });
 
   test('boundary demotes inherited history without referring to its own position', () => {

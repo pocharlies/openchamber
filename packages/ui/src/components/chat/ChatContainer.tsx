@@ -600,12 +600,12 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({ active = true, aut
     // A side conversation opens clean: the forked transcript stays in the
     // model's context but is not replayed to the reader. Selecting the id keeps
     // this subscription off unrelated session updates.
-    const inheritedThroughMessageID = useGlobalSessionsStore((state) => (
+    const sideConversationForkedAt = useGlobalSessionsStore((state) => (
         getSideConversationMetadata(state.activeSessions.find((session) => session.id === currentSessionId))
-            ?.inheritedThroughMessageID ?? null
+            ?.createdAt ?? null
     ));
     const sessionMessages = currentSessionId
-        ? dropInheritedMessages(sessionMessageRecords, inheritedThroughMessageID) as typeof sessionMessageRecords
+        ? dropInheritedMessages(sessionMessageRecords, sideConversationForkedAt) as typeof sessionMessageRecords
         : EMPTY_MESSAGES;
     const sessionMessageLoadState = useSessionMessageLoadState(
         currentSessionId ?? '',
