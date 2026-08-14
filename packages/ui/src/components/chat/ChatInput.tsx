@@ -563,7 +563,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
         const names = new Set<string>([
             'init', 'review', 'undo', 'redo', 'timeline', 'compact', 'summary', 'workspace-review', 'plan-feature', 'craft-goal', 'schedule-task', 'catch-up', 'debug', 'weigh', 'explore',
         ]);
-        if (sideConversationEnabled) {
+        // Mirrors the autocomplete and dispatch gates: a side conversation opens
+        // as a context panel tab, which the mobile and VS Code layouts do not
+        // have. Highlighting it there would advertise a command that cannot run.
+        if (sideConversationEnabled && !isMobile && !isVSCodeRuntime()) {
             names.add('btw');
             names.add('side');
         }
