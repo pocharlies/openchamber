@@ -2875,6 +2875,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
                         isVSCode={isVSCode}
                         sessionId={currentSessionId}
                         directory={currentSessionDirectoryForSync ?? currentDirectory}
+                        runtimeKey={activeRuntimeKey}
                         newSessionDraftOpen={newSessionDraftOpen}
                         messageLength={message.length}
                         radius={chatInputRadius}
