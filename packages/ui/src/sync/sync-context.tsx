@@ -30,7 +30,7 @@ import {
 } from "./live-aggregate"
 import { bootstrapGlobal, bootstrapDirectory } from "./bootstrap"
 import { retry } from "./retry"
-import { touchStreamingSession, updateChangedStreamingSessions, updateStreamingState } from "./streaming"
+import { touchMessageActivity, touchStreamingSession, updateChangedStreamingSessions, updateStreamingState } from "./streaming"
 import { countSyncPerformance } from "./performance-diagnostics"
 import { runBackgroundNetworkTask } from "@/lib/background-network"
 import { setActionRefs } from "./session-actions"
@@ -1776,6 +1776,11 @@ export function handleEvent(
     const messageID = getMessageIdFromPayload(payload) ?? undefined
     syncDebug.dispatch.eventNoChange(payload.type, sessionID, messageID)
 
+  }
+
+  const activityMessageID = getMessageIdFromPayload(payload) ?? undefined
+  if (activityMessageID && (payload.type === "message.updated" || payload.type.startsWith("message.part."))) {
+    touchMessageActivity(activityMessageID)
   }
 
   // Snapshot materialization is driven by typed reducer outcomes, not by
