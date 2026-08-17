@@ -841,13 +841,19 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({ onOpenSettings, scrollTo
     }, [newSessionDraftOpen, isMobile]);
 
     // Session activity for queue availability and controls
-    const { phase: sessionPhase } = useCurrentSessionActivity();
+    const {
+        phase: sessionPhase,
+        authoritativePhase: sessionAuthoritativePhase,
+        hasAuthoritativeStatus: hasAuthoritativeSessionStatus,
+    } = useCurrentSessionActivity();
 
     const ghost = useComposerGhost({
         sessionId: currentSessionId,
         directory: currentSessionDirectoryForSync ?? currentDirectory,
         draft: message,
         phase: sessionPhase,
+        authoritativePhase: sessionAuthoritativePhase,
+        hasAuthoritativeStatus: hasAuthoritativeSessionStatus,
         enabled: inputMode === 'normal',
     });
 
